@@ -1,36 +1,56 @@
-.PHONY: help up down build logs clean restart ps test
+# Detect container runtime (Docker or Podman)
+CONTAINER_RUNTIME := $(shell command -v podman 2> /dev/null)
+ifdef CONTAINER_RUNTIME
+    COMPOSE_CMD = podman-compose
+    RUNTIME_NAME = Podman
+else
+    CONTAINER_RUNTIME := $(shell command -v docker 2> /dev/null)
+    ifdef CONTAINER_RUNTIME
+        COMPOSE_CMD = docker-compose
+        RUNTIME_NAME = Docker
+    else
+        $(error Neither Docker nor Podman found. Please install one of them.)
+    endif
+endif
+
+.PHONY: help up down build logs clean restart ps test info
 
 help: ## Display this help message
 	@echo "Available commands:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
+info: ## Show detected container runtime
+	@echo "Using: $(RUNTIME_NAME)"
+	@echo "Command: $(COMPOSE_CMD)"
+	@$(CONTAINER_RUNTIME) --version
+
 up: ## Start all services
-	docker-compose up -d
+	$(COMPOSE_CMD) up -d
 
 down: ## Stop all services
-	docker-compose down
+	$(COMPOSE_CMD) down
 
 build: ## Build the agent API image
-	docker-compose build
+	$(COMPOSE_CMD) build
 
 logs: ## View logs from all services
-	docker-compose logs -f
+	$(COMPOSE_CMD) logs -f
 
 logs-api: ## View logs from agent API only
-	docker-compose logs -f agent-api
+	$(COMPOSE_CMD) logs -f agent-api
 
 logs-ui: ## View logs from Open Web UI only
-	docker-compose logs -f open-webui
+	$(COMPOSE_CMD) logs -f open-webui
 
 clean: ## Remove all containers, volumes, and images
-	docker-compose down -v
-	docker-compose rm -f
+	$(COMPOSE_CMD) down -v
+	$(COMPOSE_CMD) rm -f
 
 restart: ## Restart all services
-	docker-compose restart
+	$(COMPOSE_CMD) restart
 
 ps: ## Show running containers
-	docker-compose ps
+	$(COMPOSE_CMD) ps
 
 test: ## Test the API endpoint
 	@echo "Testing API health..."
@@ -39,7 +59,7 @@ test: ## Test the API endpoint
 	@curl -s http://localhost:8000/v1/models | python3 -m json.tool
 
 shell-api: ## Open shell in agent API container
-	docker-compose exec agent-api /bin/bash
+	$(COMPOSE_CMD) exec agent-api /bin/bash
 
 shell-db: ## Open PostgreSQL shell
-	docker-compose exec postgres psql -U postgres -d openwebui
+	$(COMPOSE_CMD) exec postgres psql -U postgres -d openwebui

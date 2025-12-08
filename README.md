@@ -6,6 +6,19 @@ A simple demonstration of integrating AWS Strands Agents SDK with Open Web UI th
 
 This project demonstrates how to connect a Strands Agent to Open Web UI by exposing an OpenAI-compatible API endpoint. This allows Open Web UI to interact with your custom Strands agent as if it were an OpenAI model.
 
+## Prerequisites
+
+This project works with either:
+- **Docker** + docker-compose
+- **Podman** + podman-compose
+
+The Makefile automatically detects which container runtime you have installed.
+
+To check which runtime will be used:
+```bash
+make info
+```
+
 ## Quick Start
 
 1. Copy the environment file and configure your credentials:
@@ -31,6 +44,17 @@ make up
 - **Open Web UI**: Web interface on port 3000
 - **Agent API**: OpenAI-compatible API on port 8000
 - **PostgreSQL**: Database on port 5432
+
+## Available Commands
+
+Run `make help` to see all available commands:
+
+- `make up` - Start all services
+- `make down` - Stop all services
+- `make logs` - View logs from all services
+- `make ps` - Show running containers
+- `make test` - Test the API endpoints
+- `make clean` - Remove all containers and volumes
 
 ## Stopping Services
 
