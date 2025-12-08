@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: strands-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-openwebui}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - strands-network
+
+  agent-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: strands-agent-api
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-dummy-key-for-compatibility}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - strands-network
+    restart: unless-stopped
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    environment:
+      - OPENAI_API_BASE_URLS=http://agent-api:8000/v1
+      - OPENAI_API_KEYS=${OPENAI_API_KEY:-sk-dummy-key-for-compatibility}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-openwebui}
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-change-me-in-production}
+    volumes:
+      - open_webui_data:/app/backend/data
+    ports:
+      - "3000:8080"
+    depends_on:
+      - postgres
+      - agent-api
+    networks:
+      - strands-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  open_webui_data:
+
+networks:
+  strands-network:
+    driver: bridge
