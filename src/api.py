@@ -204,9 +204,10 @@ def extract_text_for_tokens(message: Message) -> str:
 async def root():
     """Root endpoint providing API information."""
     return {
-        "message": "Strands Agent OpenAI-Compatible API",
+        "message": "Alfred Butler - Multimodal AI Assistant",
         "version": "1.0.0",
-        "agent": "Alfred - The Butler",
+        "model": "alfred-butler",
+        "features": ["text", "images", "multimodal"],
         "endpoints": {
             "models": "/v1/models",
             "chat": "/v1/chat/completions"
@@ -231,11 +232,6 @@ async def list_models() -> ModelList:
         data=[
             Model(
                 id="alfred-butler",
-                created=int(time.time()),
-                owned_by="strands-agents"
-            ),
-            Model(
-                id="strands-agent",
                 created=int(time.time()),
                 owned_by="strands-agents"
             )
@@ -330,7 +326,7 @@ async def get_model(model_id: str) -> Model:
     Returns:
         Model information
     """
-    if model_id in ["alfred-butler", "strands-agent"]:
+    if model_id == "alfred-butler":
         return Model(
             id=model_id,
             created=int(time.time()),
