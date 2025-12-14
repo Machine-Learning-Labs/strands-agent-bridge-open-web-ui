@@ -51,32 +51,37 @@ When responding:
             system_prompt=self.system_prompt
         )
     
-    def invoke(self, message: str) -> str:
+    def invoke(self, message) -> str:
         """
         Process a message through Alfred agent.
         
         Args:
-            message: User's input message
+            message: User's input message (str or list of ContentBlocks)
             
         Returns:
             Alfred's response as a string
         """
-        result = self.agent(message)
-        
-        # Extract text from response
-        if result.message and "content" in result.message:
-            content = result.message["content"]
-            if isinstance(content, list) and len(content) > 0:
-                return content[0].get("text", "")
-        
-        return "I apologise, but I seem to be having difficulty formulating a response at the moment."
+        try:
+            # Process message through Strands agent
+            result = self.agent(message)
+            
+            # Extract text from response
+            if result.message and "content" in result.message:
+                content = result.message["content"]
+                if isinstance(content, list) and len(content) > 0:
+                    return content[0].get("text", "")
+            
+            return "I apologise, but I seem to be having difficulty formulating a response at the moment."
+            
+        except Exception as e:
+            return f"I apologise, but I encountered an issue processing your request: {str(e)}"
     
-    async def ainvoke(self, message: str) -> str:
+    async def ainvoke(self, message) -> str:
         """
         Asynchronously process a message through Alfred agent.
         
         Args:
-            message: User's input message
+            message: User's input message (str or list of ContentBlocks)
             
         Returns:
             Alfred's response as a string
@@ -93,4 +98,5 @@ def create_alfred_agent() -> AlfredAgent:
     Returns:
         Configured AlfredAgent instance
     """
-    return AlfredAgent()
+    # Use Nova Pro - more cost-effective and supports vision
+    return AlfredAgent(model_id="us.amazon.nova-pro-v1:0")

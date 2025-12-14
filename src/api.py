@@ -6,7 +6,10 @@ to interact with Strands agents as if they were OpenAI models.
 """
 import time
 import uuid
-from typing import List, Optional, Dict, Any
+import base64
+import re
+import requests
+from typing import List, Optional, Dict, Any, Union
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -15,10 +18,28 @@ from src.agent import create_alfred_agent
 
 
 # Pydantic models for OpenAI API compatibility
+class ImageUrl(BaseModel):
+    """Image URL structure for multimodal content."""
+    url: str
+    detail: Optional[str] = "auto"
+
+
+class TextContent(BaseModel):
+    """Text content block."""
+    type: str = "text"
+    text: str
+
+
+class ImageContent(BaseModel):
+    """Image content block."""
+    type: str = "image_url"
+    image_url: ImageUrl
+
+
 class Message(BaseModel):
     """Chat message structure."""
     role: str
-    content: str
+    content: Union[str, List[Union[TextContent, ImageContent]]]
 
 
 class ChatCompletionRequest(BaseModel):
@@ -77,6 +98,106 @@ app = FastAPI(
 
 # Initialise Alfred agent
 alfred = create_alfred_agent()
+
+
+def parse_image_url(image_url: str) -> bytes:
+    """Parse image URL and return image bytes."""
+    # Check if it's a base64 data URL
+    pattern = r"^data:image/[a-z]*;base64,\s*"
+    if re.match(pattern, image_url):
+        image_data = re.sub(pattern, "", image_url)
+        return base64.b64decode(image_data)
+    
+    # Handle HTTP URLs
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        response = requests.get(image_url, headers=headers, timeout=30)
+        if response.status_code == 200:
+            return response.content
+        else:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Unable to fetch image from URL: {response.status_code}"
+            )
+    except requests.RequestException as e:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Error fetching image: {str(e)}"
+        )
+
+
+def convert_message_to_strands_format(message: Message):
+    """
+    Convert OpenAI message to Strands format.
+    Returns either a string (text only) or list of ContentBlocks (multimodal).
+    """
+    if isinstance(message.content, str):
+        return message.content
+    elif isinstance(message.content, list):
+        content_blocks = []
+        
+        for part in message.content:
+            if isinstance(part, TextContent):
+                content_blocks.append({"text": part.text})
+            elif isinstance(part, ImageContent):
+                # Parse image and convert to Strands format
+                image_bytes = parse_image_url(part.image_url.url)
+                
+                # Determine format from URL - be more flexible with format detection
+                image_format = "png"  # default
+                
+                # Check data URL first
+                format_match = re.search(r"data:image/([a-z]+);", part.image_url.url)
+                if format_match:
+                    image_format = format_match.group(1)
+                else:
+                    # Try to get format from URL extension
+                    url_format_match = re.search(r"\.([a-z]+)(?:\?|$)", part.image_url.url.lower())
+                    if url_format_match:
+                        ext = url_format_match.group(1)
+                        # Map common extensions to Strands supported formats
+                        format_mapping = {
+                            "jpg": "jpeg",
+                            "jpeg": "jpeg", 
+                            "png": "png",
+                            "gif": "gif",
+                            "webp": "webp"
+                        }
+                        image_format = format_mapping.get(ext, "png")
+                
+                # According to Strands docs, the format should be exactly as shown
+                content_blocks.append({
+                    "image": {
+                        "format": image_format,
+                        "source": {"bytes": image_bytes}
+                    }
+                })
+        
+        return content_blocks
+    else:
+        return str(message.content)
+
+
+def extract_text_for_tokens(message: Message) -> str:
+    """Extract only text content for token counting."""
+    if isinstance(message.content, str):
+        return message.content
+    elif isinstance(message.content, list):
+        text_parts = []
+        for part in message.content:
+            if isinstance(part, TextContent):
+                text_parts.append(part.text)
+        return " ".join(text_parts)
+    else:
+        return str(message.content)
 
 
 @app.get("/")
@@ -151,14 +272,23 @@ async def create_chat_completion(
         if not user_messages:
             raise HTTPException(status_code=400, detail="No user message found")
         
-        last_message = user_messages[-1].content
+        # Convert message to Strands format (handles both text and images)
+        last_message_content = convert_message_to_strands_format(user_messages[-1])
         
         # Process through Alfred agent
-        response_text = await alfred.ainvoke(last_message)
+        response_text = await alfred.ainvoke(last_message_content)
         
         # Estimate token usage (simplified)
-        prompt_tokens = sum(len(msg.content.split()) for msg in request.messages)
-        completion_tokens = len(response_text.split())
+        prompt_tokens = 0
+        for msg in request.messages:
+            text_content = extract_text_for_tokens(msg)
+            prompt_tokens += len(text_content.split())
+            # Add estimated tokens for images
+            if isinstance(msg.content, list):
+                image_count = sum(1 for part in msg.content if isinstance(part, ImageContent))
+                prompt_tokens += image_count * 85  # Rough estimate for image processing
+        
+        completion_tokens = len(response_text.split()) if response_text else 0
         
         # Build OpenAI-compatible response
         return ChatCompletionResponse(
