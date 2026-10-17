@@ -5,7 +5,7 @@ pytest-mock>=3.16.0
 httpx>=0.28.1
 
 # FastAPI testing
-fastapi[test]>=0.142.4
+fastapi[test]>=0.143.0
 
 # Code quality
 black>=24.0.0
