@@ -1,7 +1,7 @@
 # Testing dependencies - SIMPLE
 pytest>=7.4.0
 pytest-cov>=4.0.0
-pytest-mock>=3.16.0
+pytest-mock>=3.17.0
 httpx>=0.28.1
 
 # FastAPI testing
